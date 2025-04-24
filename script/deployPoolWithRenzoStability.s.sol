@@ -25,6 +25,7 @@ contract RenzoStabilityScript is Script, Constants, Config {
         IRateProvider(0x44Ad1be5B5912a497dAa147B7A3c55DC6067BFcF);
     uint24 minFee = 100;
     uint24 maxFee = 10_000;
+    address ezETH = 0x8d7F20137041334FBd7c87796f03b1999770Cc5f;
 
     // Pool configs
     // TODO: configure 0 zero values
@@ -42,7 +43,8 @@ contract RenzoStabilityScript is Script, Constants, Config {
             POOLMANAGER,
             rateProvider,
             minFee,
-            maxFee
+            maxFee,
+            ezETH
         );
         (address hookAddress, bytes32 salt) = HookMiner.find(
             CREATE2_FACTORY,
@@ -60,7 +62,8 @@ contract RenzoStabilityScript is Script, Constants, Config {
             POOLMANAGER,
             rateProvider,
             minFee,
-            maxFee
+            maxFee,
+            ezETH
         );
         require(
             address(renzoStability) == hookAddress,

@@ -46,6 +46,10 @@ contract RenzoStabilityTest is Deployers {
         // creates the pool manager, utility routers, and test tokens
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
+        // set currency0 as ETH
+        currency0 = CurrencyLibrary.ADDRESS_ZERO;
+
+        vm.deal(address(this), 1_000_000e18);
 
         // Deploy the hook to an address with the correct flags
         address flags = address(
@@ -56,7 +60,8 @@ contract RenzoStabilityTest is Deployers {
             manager,
             rateProvider,
             minFee,
-            maxFee
+            maxFee,
+            Currency.unwrap(currency1)
         ); //Add all the necessary constructor arguments from the hook
         deployCodeTo(
             "RenzoStability.sol:RenzoStability",
@@ -86,7 +91,7 @@ contract RenzoStabilityTest is Deployers {
         tickUpper = TickMath.maxUsableTick(key.tickSpacing);
 
         uint256 liquidityAmount = 10_000e18;
-        modifyLiquidityRouter.modifyLiquidity(
+        modifyLiquidityRouter.modifyLiquidity{value: 10230964159999999999457}(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: tickLower,
@@ -107,11 +112,13 @@ contract RenzoStabilityTest is Deployers {
 
     function test_fuzz_swap(bool zeroForOne, bool exactIn) public {
         int256 amountSpecified = exactIn ? -int256(1e18) : int256(1e18);
-        BalanceDelta result = swap(
+        uint256 msgValue = zeroForOne ? 2e18 : 0;
+        BalanceDelta result = swapNativeInput(
             key,
             zeroForOne,
             amountSpecified,
-            ZERO_BYTES
+            ZERO_BYTES,
+            msgValue
         );
         if (zeroForOne) {
             exactIn

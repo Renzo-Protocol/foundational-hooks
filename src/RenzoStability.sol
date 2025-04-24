@@ -9,6 +9,7 @@ import {Currency} from "v4-core/src/types/Currency.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {SqrtPriceLibrary} from "./libraries/SqrtPriceLibrary.sol";
 import {IRateProvider} from "./interfaces/IRateProvider.sol";
+import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
 
 /// @title RenzoStability
 /// @notice A peg stability hook, for pairs that trade at a 1:1 ratio
@@ -17,6 +18,8 @@ import {IRateProvider} from "./interfaces/IRateProvider.sol";
 /// i.e. if the pool price is off by 0.05% the fee is 0.05%, if the price is off by 0.50% the fee is 0.5%
 /// In the associated pool, Token 0 should be ETH and Token 1 should be ezETH
 contract RenzoStability is PegStabilityHook {
+    using LPFeeLibrary for uint24;
+
     IRateProvider public immutable rateProvider;
 
     // Fee bps range where 1_000_000 = 100 %
@@ -25,6 +28,8 @@ contract RenzoStability is PegStabilityHook {
 
     uint24 public immutable maxFeeBps;
     uint24 public immutable minFeeBps;
+
+    address public immutable ezETH;
 
     // Errors
     // @dev error when Invalid zero input params
@@ -36,15 +41,22 @@ contract RenzoStability is PegStabilityHook {
     /// @dev Error when min fee overflow
     error InvalidMinFee();
 
+    /// @dev Error when Invalid Currency in Pool
+    error InvalidPoolCurrency();
+
     constructor(
         IPoolManager _poolManager,
         IRateProvider _rateProvider,
         uint24 _minFee,
-        uint24 _maxFee
+        uint24 _maxFee,
+        address _ezETH
     ) PegStabilityHook(_poolManager) {
         // check for 0 value inputs
         if (
-            address(_rateProvider) == address(0) || _minFee == 0 || _maxFee == 0
+            address(_rateProvider) == address(0) ||
+            _minFee == 0 ||
+            _maxFee == 0 ||
+            _ezETH == address(0)
         ) revert InvalidZeroInput();
 
         // check for maxFee
@@ -56,6 +68,26 @@ contract RenzoStability is PegStabilityHook {
         rateProvider = _rateProvider;
         minFeeBps = _minFee;
         maxFeeBps = _maxFee;
+        ezETH = _ezETH;
+    }
+
+    /**
+     * @dev Check that the pool key has a dynamic fee.
+     * @dev Check that pair is ETH/ezETH
+     */
+    function _afterInitialize(
+        address,
+        PoolKey calldata key,
+        uint160,
+        int24
+    ) internal virtual override returns (bytes4) {
+        if (!key.fee.isDynamicFee()) revert NotDynamicFee();
+        // check that pool pair should be ETH/ezETH
+        if (
+            Currency.unwrap(key.currency0) != address(0) ||
+            Currency.unwrap(key.currency1) != ezETH
+        ) revert InvalidPoolCurrency();
+        return this.afterInitialize.selector;
     }
 
     /**
@@ -74,7 +106,7 @@ contract RenzoStability is PegStabilityHook {
     }
 
     /// @dev
-    
+
     /**
      * @notice  Calculates the price for a swap
      * @dev      linearly scale the swap fee as a tenth of the percentage difference between pool price and reference price
