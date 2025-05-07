@@ -15,7 +15,7 @@ contract Constants {
         IPoolManager(address(0x000000000004444c5dc75cB358380D2e3dE08A90));
     PositionManager constant posm =
         PositionManager(
-            payable(address(0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e))
+            payable(address(0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e))
         );
     IAllowanceTransfer constant PERMIT2 =
         IAllowanceTransfer(address(0x000000000022D473030F116dDEE9F6B43aC78BA3));

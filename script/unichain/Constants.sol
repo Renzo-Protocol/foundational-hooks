@@ -12,10 +12,10 @@ contract Constants {
 
     /// @dev populated with default anvil addresses
     IPoolManager constant POOLMANAGER =
-        IPoolManager(address(0x1f98400000000000000000000000000000000004));
+        IPoolManager(address(0x1F98400000000000000000000000000000000004));
     PositionManager constant posm =
         PositionManager(
-            payable(address(0x4529a01c7a0410167c5740c487a8de60232617bf))
+            payable(address(0x4529A01c7A0410167c5740C487A8DE60232617bf))
         );
     IAllowanceTransfer constant PERMIT2 =
         IAllowanceTransfer(address(0x000000000022D473030F116dDEE9F6B43aC78BA3));
