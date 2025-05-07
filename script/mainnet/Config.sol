@@ -12,6 +12,9 @@ contract Config {
     IERC20 constant token1 =
         IERC20(address(0xbf5495Efe5DB9ce00f80364C8B423567e58d2110)); // ezETH address on mainnet
 
+    // TODO: configure hook contract address
+    IHooks hookContract = IHooks(address(0));
+
     Currency constant currency0 = Currency.wrap(address(token0));
     Currency constant currency1 = Currency.wrap(address(token1));
 }
