@@ -28,7 +28,7 @@ contract RenzoStabilityScript is Script, Constants, Config {
 
     // Pool configs
     // TODO: configure 0 zero values
-    int24 tickSpacing = 0;
+    int24 tickSpacing = 1;
     uint160 startingPrice; // starting price in sqrtPriceX96
 
     function run() public {
