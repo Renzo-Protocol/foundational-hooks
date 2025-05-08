@@ -16,8 +16,8 @@ import {RenzoStability} from "../src/RenzoStability.sol";
 import {SqrtPriceLibrary} from "../src/libraries/SqrtPriceLibrary.sol";
 import {IRateProvider} from "../src/interfaces/IRateProvider.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
-import {Constants} from "./mainnet/Constants.sol";
-import {Config} from "./mainnet/Config.sol";
+import {Constants} from "./unichain/Constants.sol";
+import {Config} from "./unichain/Config.sol";
 
 contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
     using CurrencyLibrary for Currency;
@@ -29,10 +29,11 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
     // TODO: configure 0 values
 
     // Hook configuration
-    IRateProvider rateProvider = IRateProvider(address(0));
-    uint24 minFee = 0;
-    uint24 maxFee = 0;
-    address ezETH = address(0);
+    IRateProvider rateProvider =
+        IRateProvider(0xDb6df3559D2d96985062F0824442550CA7715960);
+    uint24 minFee = 100;
+    uint24 maxFee = 10_000;
+    address ezETH = 0x2416092f143378750bb29b79eD961ab195CcEea5;
 
     // --- pool configuration --- //
     // fees paid by swappers that accrue to liquidity providers
