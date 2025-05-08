@@ -17,6 +17,7 @@ import {SqrtPriceLibrary} from "../src/libraries/SqrtPriceLibrary.sol";
 import {IRateProvider} from "../src/interfaces/IRateProvider.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
 import {Constants} from "./unichain/Constants.sol";
+import {PoolId} from "v4-core/src/types/PoolId.sol";
 import {Config} from "./unichain/Config.sol";
 
 contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
@@ -34,6 +35,8 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
     uint24 minFee = 100;
     uint24 maxFee = 10_000;
     address ezETH = 0x2416092f143378750bb29b79eD961ab195CcEea5;
+    address payable recipient =
+        payable(0xAdef586efB3287Da4d7d1cbe15F12E0Be69e0DF0);
 
     // --- pool configuration --- //
     // fees paid by swappers that accrue to liquidity providers
@@ -42,11 +45,10 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
 
     // starting price of the pool, in sqrtPriceX96
     uint160 startingPrice;
-    IHooks hookContract;
 
     // --- liquidity position configuration --- //
     uint256 public token0Amount = 1e18;
-    uint256 public token1Amount = 1e18;
+    uint256 public token1Amount;
 
     // range of the position
     int24 tickLower = -10; // must be a multiple of tickSpacing
@@ -57,6 +59,8 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
         startingPrice = SqrtPriceLibrary.exchangeRateToSqrtPriceX96(
             rateProvider.getRate()
         );
+
+        token1Amount = (token0Amount * 1e18) / rateProvider.getRate();
 
         // deployHook;
         hookContract = IHooks(_deployHook());
@@ -96,7 +100,7 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
                 liquidity,
                 amount0Max,
                 amount1Max,
-                address(this),
+                recipient,
                 hookData
             );
 
@@ -126,8 +130,12 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
         vm.stopBroadcast();
 
         // multicall to atomically create pool & add liquidity
-        vm.broadcast();
+        vm.startBroadcast();
         posm.multicall{value: valueToPass}(params);
+        vm.stopBroadcast();
+
+        console2.log("poolId of the deployed pool - ");
+        console2.logBytes32(PoolId.unwrap(pool.toId()));
     }
 
     function _deployHook() internal returns (address) {
@@ -163,6 +171,8 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
             maxFee,
             ezETH
         );
+        vm.stopBroadcast();
+        // check that the hook was deployed at the expected address
         require(
             address(renzoStability) == hookAddress,
             "RenzoStability: hook address mismatch"
@@ -183,12 +193,13 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
         uint256 liquidity,
         uint256 amount0Max,
         uint256 amount1Max,
-        address recipient,
+        address _recipient,
         bytes memory hookData
     ) internal pure returns (bytes memory, bytes[] memory) {
         bytes memory actions = abi.encodePacked(
             uint8(Actions.MINT_POSITION),
-            uint8(Actions.SETTLE_PAIR)
+            uint8(Actions.SETTLE_PAIR),
+            uint8(Actions.SWEEP)
         );
 
         bytes[] memory params = new bytes[](3);
@@ -199,11 +210,11 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
             liquidity,
             amount0Max,
             amount1Max,
-            recipient,
+            _recipient,
             hookData
         );
         params[1] = abi.encode(poolKey.currency0, poolKey.currency1);
-        params[2] = abi.encode(poolKey.currency0, recipient);
+        params[2] = abi.encode(poolKey.currency0, _recipient);
         return (actions, params);
     }
 
