@@ -13,12 +13,14 @@ import {LiquidityAmounts} from "v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {RenzoStability} from "../src/RenzoStability.sol";
+import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {SqrtPriceLibrary} from "../src/libraries/SqrtPriceLibrary.sol";
 import {IRateProvider} from "../src/interfaces/IRateProvider.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
 import {Constants} from "./unichain/Constants.sol";
 import {PoolId} from "v4-core/src/types/PoolId.sol";
 import {Config} from "./unichain/Config.sol";
+import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 
 contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
     using CurrencyLibrary for Currency;
@@ -51,8 +53,9 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
     uint256 public token1Amount;
 
     // range of the position
-    int24 tickLower = -10; // must be a multiple of tickSpacing
-    int24 tickUpper = 10;
+    uint256 liquidityPriceRange = 0.01e18; // 1% range where 1e18 is 100%
+    int24 tickLower; // must be a multiple of tickSpacing
+    int24 tickUpper; // must be a multiple of tickSpacing
     /////////////////////////////////////
 
     function run() external {
@@ -76,6 +79,10 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
         bytes memory hookData = new bytes(0);
 
         // --------------------------------- //
+        // get tick range
+        (tickLower, tickUpper) = _getTickRange(pool, startingPrice);
+        console2.log("Lower tick for liquidity -> ", tickLower);
+        console2.log("Upper tick for liquidity -> ", tickUpper);
 
         // Converts token amounts to liquidity units
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -111,8 +118,7 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
         params[0] = abi.encodeWithSelector(
             posm.initializePool.selector,
             pool,
-            startingPrice,
-            hookData
+            startingPrice
         );
 
         // mint liquidity
@@ -126,7 +132,7 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
         uint256 valueToPass = currency0.isAddressZero() ? amount0Max : 0;
 
         vm.startBroadcast();
-        tokenApprovals();
+        tokenApprovals(amount0Max, amount1Max);
         vm.stopBroadcast();
 
         // multicall to atomically create pool & add liquidity
@@ -218,24 +224,81 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
         return (actions, params);
     }
 
-    function tokenApprovals() public {
+    function tokenApprovals(
+        uint256 _token0Amount,
+        uint256 _token1Amount
+    ) public {
         if (!currency0.isAddressZero()) {
-            token0.approve(address(PERMIT2), type(uint256).max);
+            token0.approve(address(PERMIT2), _token0Amount);
+            // PERMIT2 only supports uint160 for the amount, so we need to cap it
+            uint160 _token0PermitAmount = _token0Amount > type(uint160).max
+                ? type(uint160).max
+                : uint160(_token0Amount);
             PERMIT2.approve(
                 address(token0),
                 address(posm),
-                type(uint160).max,
+                _token0PermitAmount,
                 type(uint48).max
             );
         }
         if (!currency1.isAddressZero()) {
-            token1.approve(address(PERMIT2), type(uint256).max);
+            token1.approve(address(PERMIT2), _token1Amount);
+            // PERMIT2 only supports uint160 for the amount, so we need to cap it
+            uint160 _token1PermitAmount = _token1Amount > type(uint160).max
+                ? type(uint160).max
+                : uint160(_token1Amount);
             PERMIT2.approve(
                 address(token1),
                 address(posm),
-                type(uint160).max,
+                _token1PermitAmount,
                 type(uint48).max
             );
         }
+    }
+
+    function _getTickRange(
+        PoolKey memory poolKey,
+        uint160 sqrtPriceX96
+    ) internal view returns (int24 _tickLower, int24 _tickUpper) {
+        // calculating sqrt(price * 0.9e18/1e18) * Q96 is the same as
+        // (sqrt(price) * Q96) * (sqrt(0.9e18/1e18))
+        // (sqrt(price) * Q96) * (sqrt(0.9e18) / sqrt(1e18))
+        uint160 _sqrtPriceLower = uint160(
+            FixedPointMathLib.mulDivDown(
+                uint256(sqrtPriceX96),
+                FixedPointMathLib.sqrt(1e18 - liquidityPriceRange),
+                FixedPointMathLib.sqrt(1e18)
+            )
+        );
+
+        // calculating sqrt(price * 1.1) * Q96 is the same as
+        // (sqrt(price) * Q96) * (sqrt(1.1e18/1e18))
+        // (sqrt(price) * Q96) * (sqrt(1.1e18) / sqrt(1e18))
+        uint160 _sqrtPriceUpper = uint160(
+            FixedPointMathLib.mulDivDown(
+                uint256(sqrtPriceX96),
+                FixedPointMathLib.sqrt(1e18 + liquidityPriceRange),
+                FixedPointMathLib.sqrt(1e18)
+            )
+        );
+
+        int24 _tickLowerUnaligned = TickMath.getTickAtSqrtPrice(
+            _sqrtPriceLower
+        );
+        int24 _tickUpperUnaligned = TickMath.getTickAtSqrtPrice(
+            _sqrtPriceUpper
+        );
+
+        // align the ticks to the tick spacing
+        int24 _tickSpacing = poolKey.tickSpacing;
+        _tickLower = _alignTick(_tickLowerUnaligned, _tickSpacing);
+        _tickUpper = _alignTick(_tickUpperUnaligned, _tickSpacing);
+    }
+
+    function _alignTick(
+        int24 tick,
+        int24 _tickSpacing
+    ) internal pure returns (int24) {
+        return (tick / _tickSpacing) * _tickSpacing;
     }
 }
