@@ -159,7 +159,7 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
             ezETH
         );
         (address hookAddress, bytes32 salt) = HookMiner.find(
-            CREATE2_FACTORY,
+            CREATE2_DEPLOYER,
             flags,
             type(RenzoStability).creationCode,
             constructorArgs
