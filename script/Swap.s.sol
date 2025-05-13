@@ -8,8 +8,8 @@ import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {CurrencyLibrary, Currency} from "v4-core/src/types/Currency.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
-import {Constants} from "./sepolia/Constants.sol";
-import {Config} from "./sepolia/Config.sol";
+import {Constants} from "./unichain/Constants.sol";
+import {Config} from "./unichain/Config.sol";
 
 contract SwapScript is Script, Constants, Config {
     // slippage tolerance to allow for unlimited price impact
@@ -19,17 +19,19 @@ contract SwapScript is Script, Constants, Config {
     /////////////////////////////////////
     // --- Parameters to Configure --- //
     /////////////////////////////////////
+    // Swap amount
+    uint256 swapAmount = 0.01e18; // 0.1 ezETH
 
     // PoolSwapTest Contract address, sepolia
     PoolSwapTest swapRouter =
-        PoolSwapTest(0x9B6b46e2c869aa39918Db7f52f5557FE577B6eEe);
+        PoolSwapTest(0x1117ef14c6a13bAf9486eB85417219096E098cfA);
 
     // --- pool configuration --- //
     // fees paid by swappers that accrue to liquidity providers
     uint24 lpFee = LPFeeLibrary.DYNAMIC_FEE_FLAG;
-    int24 tickSpacing = 60;
+    int24 tickSpacing = 1;
 
-    address caller = 0xAd0f3f4BEC42CdA68d2cd31301B3C3De3B0F50E2;
+    address caller = 0xAdef586efB3287Da4d7d1cbe15F12E0Be69e0DF0;
 
     function run() external {
         PoolKey memory pool = PoolKey({
@@ -43,21 +45,21 @@ contract SwapScript is Script, Constants, Config {
         // approve tokens to the swap router
         if (!currency0.isAddressZero()) {
             vm.broadcast();
-            token0.approve(address(swapRouter), type(uint256).max);
+            token0.approve(address(swapRouter), swapAmount);
         }
         if (
             !currency1.isAddressZero() &&
-            token1.allowance(caller, address(swapRouter)) < type(uint256).max
+            token1.allowance(caller, address(swapRouter)) < swapAmount
         ) {
             vm.broadcast();
-            token1.approve(address(swapRouter), type(uint256).max);
+            token1.approve(address(swapRouter), swapAmount);
         }
 
         // ------------------------------ //
         // Swap 100e18 token0 into token1 //
         // ------------------------------ //
-        bool zeroForOne = true;
-        int256 amount = 0.01e18;
+        bool zeroForOne = false;
+        int256 amount = int256(swapAmount);
         IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
             zeroForOne: zeroForOne,
             amountSpecified: zeroForOne ? -amount : amount,

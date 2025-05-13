@@ -12,7 +12,7 @@ contract Config {
     IERC20 constant token1 =
         IERC20(address(0x2416092f143378750bb29b79eD961ab195CcEea5)); // ezETH address on unichain
     // TODO: configure hook contract address
-    IHooks hookContract = IHooks(address(0));
+    IHooks hookContract = IHooks(0x09DEA99D714A3a19378e3D80D1ad22Ca46085080);
 
     Currency constant currency0 = Currency.wrap(address(token0));
     Currency constant currency1 = Currency.wrap(address(token1));
