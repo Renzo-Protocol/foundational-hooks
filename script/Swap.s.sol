@@ -20,7 +20,7 @@ contract SwapScript is Script, Constants, Config {
     // --- Parameters to Configure --- //
     /////////////////////////////////////
     // Swap amount
-    uint256 swapAmount = 0.01e18; // 0.1 ezETH
+    uint256 swapAmount = 0.02e18; // 0.1 ezETH
 
     // PoolSwapTest Contract address, sepolia
     PoolSwapTest swapRouter =
@@ -58,7 +58,7 @@ contract SwapScript is Script, Constants, Config {
         // ------------------------------ //
         // Swap 100e18 token0 into token1 //
         // ------------------------------ //
-        bool zeroForOne = false;
+        bool zeroForOne = true;
         int256 amount = int256(swapAmount);
         IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
             zeroForOne: zeroForOne,
