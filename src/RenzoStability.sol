@@ -26,6 +26,9 @@ contract RenzoStability is PegStabilityHook {
     uint24 public constant MAX_FEE_BPS = 10_000; // 1% max fee allowed, 1% = 10_000
     uint24 public constant MIN_FEE_BPS = 100; // 0.01% mix fee allowed
 
+    /// @dev The trigger depeg % where fees start increasing
+    uint24 public constant feeTrigger = 2_500;
+
     uint24 public immutable maxFeeBps;
     uint24 public immutable minFeeBps;
 
@@ -138,8 +141,8 @@ contract RenzoStability is PegStabilityHook {
         // convert percentage WAD to pips, i.e. 0.05e18 = 5% = 50_000
         // the fee itself is the percentage difference
         uint24 fee = uint24(absPercentageDiffWad / 1e12);
-        if (fee < minFeeBps) {
-            // if % depeg is less than min fee %. charge minFee
+        if (fee < minFeeBps || fee < feeTrigger) {
+            // if % depeg is less than min fee % or has not met the trigger. charge minFee
             fee = minFeeBps;
         } else if (fee > maxFeeBps) {
             // if % depeg is more than max fee %. charge maxFee

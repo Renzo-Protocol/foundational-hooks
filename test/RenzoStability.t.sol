@@ -218,6 +218,9 @@ contract RenzoStabilityTest is Deployers {
                 SqrtPriceLibrary.exchangeRateToSqrtPriceX96(exchangeRate)
             );
         uint24 expectedFee = uint24(absPercentageDiffWad / 1e12);
+        if(expectedFee < 2_500){
+            expectedFee = minFee; // minFee if trigger is not met
+        }
         // move the pool price away from peg
         vm.recordLogs();
         swap(key, false, -int256(0.1e18), ZERO_BYTES);
