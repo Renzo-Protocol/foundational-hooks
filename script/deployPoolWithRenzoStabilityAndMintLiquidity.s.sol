@@ -21,6 +21,7 @@ import {Constants} from "./unichain/Constants.sol";
 import {PoolId} from "v4-core/src/types/PoolId.sol";
 import {Config} from "./unichain/Config.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
+import {TransparentUpgradeableProxy} from "openzeppelin-contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
     using CurrencyLibrary for Currency;
@@ -37,6 +38,7 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
     uint24 minFee = 100;
     uint24 maxFee = 10_000;
     address ezETH = 0x2416092f143378750bb29b79eD961ab195CcEea5;
+    address proxyAdmin = 0x91625601e2BbBEb7171C40c79FadBCFbFf6A1982;
     address payable recipient =
         payable(0xAdef586efB3287Da4d7d1cbe15F12E0Be69e0DF0);
 
@@ -145,6 +147,18 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
     }
 
     function _deployHook() internal returns (address) {
+        // Deploy the hook implementation
+        RenzoStability renzoStabilityImpl = new RenzoStability(POOLMANAGER);
+
+        // Initialize data for the hook
+        bytes memory initData = abi.encodeWithSelector(
+            RenzoStability.initialize.selector,
+            rateProvider,
+            minFee,
+            maxFee,
+            ezETH
+        );
+
         // hook contracts must have specific flags encoded in the address
         uint160 flags = uint160(
             Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG
@@ -152,16 +166,14 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
 
         // Mine a salt that will produce a hook address with the correct flags
         bytes memory constructorArgs = abi.encode(
-            POOLMANAGER,
-            rateProvider,
-            minFee,
-            maxFee,
-            ezETH
+            address(renzoStabilityImpl),
+            proxyAdmin,
+            initData
         );
         (address hookAddress, bytes32 salt) = HookMiner.find(
             CREATE2_DEPLOYER,
             flags,
-            type(RenzoStability).creationCode,
+            type(TransparentUpgradeableProxy).creationCode,
             constructorArgs
         );
 
@@ -170,12 +182,14 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
         );
         // Deploy the hook using CREATE2
         vm.startBroadcast();
-        RenzoStability renzoStability = new RenzoStability{salt: salt}(
-            POOLMANAGER,
-            rateProvider,
-            minFee,
-            maxFee,
-            ezETH
+        RenzoStability renzoStability = RenzoStability(
+            address(
+                new TransparentUpgradeableProxy{salt: salt}(
+                    address(renzoStabilityImpl),
+                    proxyAdmin,
+                    initData
+                )
+            )
         );
         vm.stopBroadcast();
         // check that the hook was deployed at the expected address

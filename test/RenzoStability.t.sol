@@ -22,10 +22,13 @@ import {IRateProvider} from "../src/interfaces/IRateProvider.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {SwapFeeEventAsserter} from "./utils/SwapFeeEventAsserter.sol";
 import {SqrtPriceLibrary} from "../src/libraries/SqrtPriceLibrary.sol";
+import {TransparentUpgradeableProxy, ProxyAdmin} from "openzeppelin-contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 contract RenzoStabilityTest is Deployers {
+    address owner = makeAddr("owner");
     // Hook configs. TODO: configure
     IRateProvider rateProvider = IRateProvider(makeAddr("rateProvider"));
+
     uint256 exchangeRate = 1046726277868365115;
     uint24 minFee = 100;
     uint24 maxFee = 10_000;
@@ -51,20 +54,32 @@ contract RenzoStabilityTest is Deployers {
 
         vm.deal(address(this), 1_000_000e18);
 
+        // Deploy ProxyAdmin
+        ProxyAdmin proxyAdmin = new ProxyAdmin(owner);
+
+        // Deploy the hook implementation
+        RenzoStability renzoStabilityImpl = new RenzoStability(manager);
+
+        bytes memory initData = abi.encodeWithSelector(
+            RenzoStability.initialize.selector,
+            rateProvider,
+            minFee,
+            maxFee,
+            Currency.unwrap(currency1)
+        );
+
         // Deploy the hook to an address with the correct flags
         address flags = address(
             uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG) ^
                 (0x4444 << 144) // Namespace the hook to avoid collisions
         );
         bytes memory constructorArgs = abi.encode(
-            manager,
-            rateProvider,
-            minFee,
-            maxFee,
-            Currency.unwrap(currency1)
+            address(renzoStabilityImpl),
+            address(proxyAdmin),
+            initData
         ); //Add all the necessary constructor arguments from the hook
         deployCodeTo(
-            "RenzoStability.sol:RenzoStability",
+            "openzeppelin-contracts/proxy/transparent/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy",
             constructorArgs,
             flags
         );

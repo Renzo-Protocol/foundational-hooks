@@ -8,8 +8,9 @@ import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {SqrtPriceLibrary} from "./libraries/SqrtPriceLibrary.sol";
-import {IRateProvider} from "./interfaces/IRateProvider.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
+import {Initializable} from "openzeppelin-contracts/proxy/utils/Initializable.sol";
+import "./RenzoStabilityStorage.sol";
 
 /// @title RenzoStability
 /// @notice A peg stability hook, for pairs that trade at a 1:1 ratio
@@ -17,19 +18,16 @@ import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
 /// otherwise it charges a linearly-scaled fee based on the distance from the peg
 /// i.e. if the pool price is off by 0.05% the fee is 0.05%, if the price is off by 0.50% the fee is 0.5%
 /// In the associated pool, Token 0 should be ETH and Token 1 should be ezETH
-contract RenzoStability is PegStabilityHook {
+contract RenzoStability is
+    PegStabilityHook,
+    Initializable,
+    RenzoStabilityStorageV1
+{
     using LPFeeLibrary for uint24;
-
-    IRateProvider public immutable rateProvider;
 
     // Fee bps range where 1_000_000 = 100 %
     uint24 public constant MAX_FEE_BPS = 10_000; // 1% max fee allowed, 1% = 10_000
     uint24 public constant MIN_FEE_BPS = 100; // 0.01% mix fee allowed
-
-    uint24 public immutable maxFeeBps;
-    uint24 public immutable minFeeBps;
-
-    address public immutable ezETH;
 
     // Errors
     // @dev error when Invalid zero input params
@@ -44,13 +42,17 @@ contract RenzoStability is PegStabilityHook {
     /// @dev Error when Invalid Currency in Pool
     error InvalidPoolCurrency();
 
-    constructor(
-        IPoolManager _poolManager,
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor(IPoolManager _poolManager) PegStabilityHook(_poolManager) {
+        _disableInitializers();
+    }
+
+    function initialize(
         IRateProvider _rateProvider,
         uint24 _minFee,
         uint24 _maxFee,
         address _ezETH
-    ) PegStabilityHook(_poolManager) {
+    ) public initializer {
         // check for 0 value inputs
         if (
             address(_rateProvider) == address(0) ||

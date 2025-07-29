@@ -13,7 +13,7 @@ import {SqrtPriceLibrary} from "../src/libraries/SqrtPriceLibrary.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
 import {IRateProvider} from "../src/interfaces/IRateProvider.sol";
 import {PoolId} from "v4-core/src/types/PoolId.sol";
-
+import {TransparentUpgradeableProxy} from "openzeppelin-contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {Constants} from "./sepolia/Constants.sol";
 import {Config} from "./sepolia/Config.sol";
 
@@ -26,6 +26,7 @@ contract RenzoStabilityScript is Script, Constants, Config {
     uint24 minFee = 100;
     uint24 maxFee = 10_000;
     address ezETH = 0x8d7F20137041334FBd7c87796f03b1999770Cc5f;
+    address proxyAdmin = 0x91625601e2BbBEb7171C40c79FadBCFbFf6A1982;
 
     // Pool configs
     // TODO: configure 0 zero values
@@ -33,6 +34,17 @@ contract RenzoStabilityScript is Script, Constants, Config {
     uint160 startingPrice; // starting price in sqrtPriceX96
 
     function run() public {
+        // Deploy the hook implementation
+        RenzoStability renzoStabilityImpl = new RenzoStability(POOLMANAGER);
+
+        bytes memory initData = abi.encodeWithSelector(
+            RenzoStability.initialize.selector,
+            rateProvider,
+            minFee,
+            maxFee,
+            ezETH
+        );
+
         // hook contracts must have specific flags encoded in the address
         uint160 flags = uint160(
             Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG
@@ -40,30 +52,30 @@ contract RenzoStabilityScript is Script, Constants, Config {
 
         // Mine a salt that will produce a hook address with the correct flags
         bytes memory constructorArgs = abi.encode(
-            POOLMANAGER,
-            rateProvider,
-            minFee,
-            maxFee,
-            ezETH
+            address(renzoStabilityImpl),
+            proxyAdmin,
+            initData
         );
         (address hookAddress, bytes32 salt) = HookMiner.find(
             CREATE2_FACTORY,
             flags,
-            type(RenzoStability).creationCode,
+            type(TransparentUpgradeableProxy).creationCode,
             constructorArgs
         );
 
         startingPrice = SqrtPriceLibrary.exchangeRateToSqrtPriceX96(
             rateProvider.getRate()
         );
-        // Deploy the hook using CREATE2
+        // Deploy the hook proxy using CREATE2
         vm.startBroadcast();
-        RenzoStability renzoStability = new RenzoStability{salt: salt}(
-            POOLMANAGER,
-            rateProvider,
-            minFee,
-            maxFee,
-            ezETH
+        RenzoStability renzoStability = RenzoStability(
+            address(
+                new TransparentUpgradeableProxy{salt: salt}(
+                    address(renzoStabilityImpl),
+                    proxyAdmin,
+                    initData
+                )
+            )
         );
         require(
             address(renzoStability) == hookAddress,
