@@ -27,8 +27,10 @@ contract RenzoStabilityTest is Deployers {
     // Hook configs. TODO: configure
     IRateProvider rateProvider = IRateProvider(makeAddr("rateProvider"));
     uint256 exchangeRate = 1046726277868365115;
-    uint24 minFee = 100;
+    uint24 defaultFee = 100; // 0.01%
+    uint24 minFee = 2_500;
     uint24 maxFee = 10_000;
+    address owner = makeAddr("owner");
 
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
@@ -59,9 +61,11 @@ contract RenzoStabilityTest is Deployers {
         bytes memory constructorArgs = abi.encode(
             manager,
             rateProvider,
+            defaultFee,
             minFee,
             maxFee,
-            Currency.unwrap(currency1)
+            Currency.unwrap(currency1),
+            owner
         ); //Add all the necessary constructor arguments from the hook
         deployCodeTo(
             "RenzoStability.sol:RenzoStability",
