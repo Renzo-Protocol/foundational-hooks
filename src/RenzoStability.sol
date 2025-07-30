@@ -96,8 +96,11 @@ contract RenzoStability is PegStabilityHook, Ownable2Step {
         if (_maxDynamicFee > MAX_FEE_BPS) revert InvalidMaxFee();
 
         // check for minFee range
-        if (_minDynamicFee > _maxDynamicFee || _minDynamicFee < MIN_FEE_BPS)
-            revert InvalidMinFee();
+        if (
+            _minDynamicFee > _maxDynamicFee ||
+            _minDynamicFee < MIN_FEE_BPS ||
+            _minDynamicFee < defaultFeeBps
+        ) revert InvalidMinFee();
 
         minDynamicFeeBps = _minDynamicFee;
         maxDynamicFeeBps = _maxDynamicFee;
