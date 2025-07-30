@@ -146,7 +146,7 @@ contract RenzoStabilityTest is Deployers {
         vm.recordLogs();
         BalanceDelta ref = swap(key, zeroForOne, -int256(0.1e18), ZERO_BYTES);
         Vm.Log[] memory recordedLogs = vm.getRecordedLogs();
-        recordedLogs.assertSwapFee(minFee);
+        recordedLogs.assertSwapFee(defaultFee);
 
         // move the pool price to off peg
         swap(key, zeroForOne, -int256(1000e18), ZERO_BYTES);
@@ -160,7 +160,7 @@ contract RenzoStabilityTest is Deployers {
             ZERO_BYTES
         );
         recordedLogs = vm.getRecordedLogs();
-        recordedLogs.assertSwapFee(zeroForOne ? minFee : maxFee);
+        recordedLogs.assertSwapFee(zeroForOne ? defaultFee : maxFee);
 
         // output of the second swap is much less
         // highFeeSwap + offset < ref
@@ -197,10 +197,10 @@ contract RenzoStabilityTest is Deployers {
         uint24 lowerFee = recordedLogs.getSwapFeeFromEvent();
         if (zeroForOne) {
             assertGt(higherFee, lowerFee);
-            assertEq(lowerFee, minFee); // minFee
+            assertEq(lowerFee, defaultFee); // defaultFee
         } else {
-            assertEq(lowerFee, minFee); // minFee
-            assertEq(higherFee, minFee); // minFee
+            assertEq(lowerFee, defaultFee); // defaultFee
+            assertEq(higherFee, defaultFee); // defaultFee
         }
 
         // output of the second swap is much higher
@@ -221,10 +221,12 @@ contract RenzoStabilityTest is Deployers {
                 uint160(poolSqrtPriceX96),
                 SqrtPriceLibrary.exchangeRateToSqrtPriceX96(exchangeRate)
             );
-        uint24 expectedFee = uint24(absPercentageDiffWad / 1e12);
+        uint24 expectedFee = uint24(absPercentageDiffWad / 1e12) > minFee
+            ? uint24(absPercentageDiffWad / 1e12)
+            : defaultFee;
         // move the pool price away from peg
         vm.recordLogs();
-        swap(key, false, -int256(0.1e18), ZERO_BYTES);
+        swap(key, false, -int256(11e18), ZERO_BYTES);
         Vm.Log[] memory recordedLogs = vm.getRecordedLogs();
         uint24 swapFee = recordedLogs.getSwapFeeFromEvent();
         assertEq(swapFee, expectedFee);
