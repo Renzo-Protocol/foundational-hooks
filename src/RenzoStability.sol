@@ -32,6 +32,15 @@ contract RenzoStability is PegStabilityHook, Ownable2Step {
 
     address public ezETH;
 
+    // Events
+    // @dev Event emitted when the fee configuration is updated
+    event FeeConfigurationUpdated(
+        uint24 oldMinDynamicFeeBps,
+        uint24 oldMaxDynamicFeeBps,
+        uint24 newMinDynamicFeeBps,
+        uint24 newMaxDynamicFeeBps
+    );
+
     // Errors
     // @dev error when Invalid zero input params
     error InvalidZeroInput();
@@ -84,6 +93,12 @@ contract RenzoStability is PegStabilityHook, Ownable2Step {
         ezETH = _ezETH;
     }
 
+    /**
+     * @notice  Allows the owner to configure the dynamic fee range
+     * @dev     Permissioned call (onlyOwner)
+     * @param   _minDynamicFee  new minimum dynamic fee bps
+     * @param   _maxDynamicFee  new maximum dynamic fee bps
+     */
     function configureFee(
         uint24 _minDynamicFee,
         uint24 _maxDynamicFee
@@ -101,6 +116,13 @@ contract RenzoStability is PegStabilityHook, Ownable2Step {
             _minDynamicFee < MIN_FEE_BPS ||
             _minDynamicFee < defaultFeeBps
         ) revert InvalidMinFee();
+
+        emit FeeConfigurationUpdated(
+            minDynamicFeeBps,
+            maxDynamicFeeBps,
+            _minDynamicFee,
+            _maxDynamicFee
+        );
 
         minDynamicFeeBps = _minDynamicFee;
         maxDynamicFeeBps = _maxDynamicFee;
