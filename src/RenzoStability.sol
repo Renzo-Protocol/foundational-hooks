@@ -10,6 +10,7 @@ import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {SqrtPriceLibrary} from "./libraries/SqrtPriceLibrary.sol";
 import {IRateProvider} from "./interfaces/IRateProvider.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
+import "openzeppelin-contracts/access/Ownable2Step.sol";
 
 /// @title RenzoStability
 /// @notice A peg stability hook, for pairs that trade at a 1:1 ratio
@@ -17,19 +18,30 @@ import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
 /// otherwise it charges a linearly-scaled fee based on the distance from the peg
 /// i.e. if the pool price is off by 0.05% the fee is 0.05%, if the price is off by 0.50% the fee is 0.5%
 /// In the associated pool, Token 0 should be ETH and Token 1 should be ezETH
-contract RenzoStability is PegStabilityHook {
+contract RenzoStability is PegStabilityHook, Ownable2Step {
     using LPFeeLibrary for uint24;
-
-    IRateProvider public immutable rateProvider;
 
     // Fee bps range where 1_000_000 = 100 %
     uint24 public constant MAX_FEE_BPS = 10_000; // 1% max fee allowed, 1% = 10_000
-    uint24 public constant MIN_FEE_BPS = 100; // 0.01% mix fee allowed
+    uint24 public constant MIN_FEE_BPS = 50; // 0.005% min fee allowed
 
-    uint24 public immutable maxFeeBps;
-    uint24 public immutable minFeeBps;
+    IRateProvider public rateProvider;
+    uint24 public defaultFeeBps; // default fee bps to charge if the pool price is off by less than minDynamicFeeBps
+    uint24 public maxDynamicFeeBps;
+    uint24 public minDynamicFeeBps;
 
-    address public immutable ezETH;
+    address public ezETH;
+
+    // Events
+    // @dev Event emitted when the fee configuration is updated
+    event FeeConfigurationUpdated(
+        uint24 oldDefaultFeeBps,
+        uint24 oldMinDynamicFeeBps,
+        uint24 oldMaxDynamicFeeBps,
+        uint24 newDefaultFeeBps,
+        uint24 newMinDynamicFeeBps,
+        uint24 newMaxDynamicFeeBps
+    );
 
     // Errors
     // @dev error when Invalid zero input params
@@ -44,31 +56,83 @@ contract RenzoStability is PegStabilityHook {
     /// @dev Error when Invalid Currency in Pool
     error InvalidPoolCurrency();
 
+    /// @dev Error when default fee is not in range
+    error InvalidDefaultFee();
+
     constructor(
         IPoolManager _poolManager,
         IRateProvider _rateProvider,
-        uint24 _minFee,
-        uint24 _maxFee,
-        address _ezETH
-    ) PegStabilityHook(_poolManager) {
+        uint24 _defaultFeeBps,
+        uint24 _minDynamicFee,
+        uint24 _maxDynamicFee,
+        address _ezETH,
+        address _initialOwner
+    ) PegStabilityHook(_poolManager) Ownable(_initialOwner) {
         // check for 0 value inputs
         if (
             address(_rateProvider) == address(0) ||
-            _minFee == 0 ||
-            _maxFee == 0 ||
+            _minDynamicFee == 0 ||
+            _maxDynamicFee == 0 ||
+            _defaultFeeBps == 0 ||
             _ezETH == address(0)
         ) revert InvalidZeroInput();
 
-        // check for maxFee
-        if (_maxFee > MAX_FEE_BPS) revert InvalidMaxFee();
+        // check for default fee range, MIN_FEE_BPS <= defaultFeeBps <= maxFee
+        if (_defaultFeeBps < MIN_FEE_BPS || _defaultFeeBps > _minDynamicFee)
+            revert InvalidDefaultFee();
 
-        // check for minFee range
-        if (_minFee > _maxFee || _minFee < MIN_FEE_BPS) revert InvalidMinFee();
+        // check for maxFee, _maxDynamicFee <= MAX_FEE_BPS
+        if (_maxDynamicFee > MAX_FEE_BPS) revert InvalidMaxFee();
+
+        // check for minFee range, MIN_FEE_BPS <= _minDynamicFee <= _maxDynamicFee
+        if (_minDynamicFee > _maxDynamicFee || _minDynamicFee < MIN_FEE_BPS)
+            revert InvalidMinFee();
 
         rateProvider = _rateProvider;
-        minFeeBps = _minFee;
-        maxFeeBps = _maxFee;
+        defaultFeeBps = _defaultFeeBps;
+        minDynamicFeeBps = _minDynamicFee;
+        maxDynamicFeeBps = _maxDynamicFee;
         ezETH = _ezETH;
+    }
+
+    /**
+     * @notice  Allows the owner to configure the dynamic fee range
+     * @dev     Permissioned call (onlyOwner)
+     * @param   _minDynamicFee  new minimum dynamic fee bps
+     * @param   _maxDynamicFee  new maximum dynamic fee bps
+     */
+    function configureFee(
+        uint24 _defaultFeeBps,
+        uint24 _minDynamicFee,
+        uint24 _maxDynamicFee
+    ) external onlyOwner {
+        // check for 0 value inputs
+        if (_minDynamicFee == 0 || _maxDynamicFee == 0 || _defaultFeeBps == 0)
+            revert InvalidZeroInput();
+
+        // check for default fee range, MIN_FEE_BPS <= defaultFeeBps <= maxFee
+        if (_defaultFeeBps < MIN_FEE_BPS || _defaultFeeBps > _minDynamicFee)
+            revert InvalidDefaultFee();
+
+        // check for maxFee, _maxDynamicFee <= MAX_FEE_BPS
+        if (_maxDynamicFee > MAX_FEE_BPS) revert InvalidMaxFee();
+
+        // check for minFee range, MIN_FEE_BPS <= _minDynamicFee <= _maxDynamicFee
+        if (_minDynamicFee > _maxDynamicFee || _minDynamicFee < MIN_FEE_BPS)
+            revert InvalidMinFee();
+
+        emit FeeConfigurationUpdated(
+            defaultFeeBps,
+            minDynamicFeeBps,
+            maxDynamicFeeBps,
+            _defaultFeeBps,
+            _minDynamicFee,
+            _maxDynamicFee
+        );
+
+        defaultFeeBps = _defaultFeeBps;
+        minDynamicFeeBps = _minDynamicFee;
+        maxDynamicFeeBps = _maxDynamicFee;
     }
 
     /**
@@ -125,7 +189,7 @@ contract RenzoStability is PegStabilityHook {
     ) internal view override returns (uint24) {
         // pool price is less than reference price (over pegged), or zeroForOne trades are moving towards the reference price
         if (zeroForOne || poolSqrtPriceX96 < referenceSqrtPriceX96)
-            return minFeeBps; // minFee bip
+            return defaultFeeBps; // minFee bip
 
         // computes the absolute percentage difference between the pool price and the reference price
         // i.e. 0.005e18 = 0.50% difference between pool price and reference price
@@ -138,12 +202,12 @@ contract RenzoStability is PegStabilityHook {
         // convert percentage WAD to pips, i.e. 0.05e18 = 5% = 50_000
         // the fee itself is the percentage difference
         uint24 fee = uint24(absPercentageDiffWad / 1e12);
-        if (fee < minFeeBps) {
-            // if % depeg is less than min fee %. charge minFee
-            fee = minFeeBps;
-        } else if (fee > maxFeeBps) {
+        if (fee < minDynamicFeeBps) {
+            // if % depeg is less than min fee %. charge default fee
+            fee = defaultFeeBps;
+        } else if (fee > maxDynamicFeeBps) {
             // if % depeg is more than max fee %. charge maxFee
-            fee = maxFeeBps;
+            fee = maxDynamicFeeBps;
         }
         return fee;
     }

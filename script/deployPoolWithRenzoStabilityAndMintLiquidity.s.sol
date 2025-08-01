@@ -34,9 +34,11 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
     // Hook configuration
     IRateProvider rateProvider =
         IRateProvider(0xDb6df3559D2d96985062F0824442550CA7715960);
-    uint24 minFee = 100;
-    uint24 maxFee = 10_000;
-    address ezETH = 0x2416092f143378750bb29b79eD961ab195CcEea5;
+    uint24 minDynamicFee = 2_500;
+    uint24 maxDynamicFee = 10_000;
+    uint24 defaultFee = 95;
+    address ezETH = 0x8d7F20137041334FBd7c87796f03b1999770Cc5f;
+    address owner = 0xD1e6626310fD54Eceb5b9a51dA2eC329D6D4B68A; // Multisig on mainnet
     address payable recipient =
         payable(0xAdef586efB3287Da4d7d1cbe15F12E0Be69e0DF0);
 
@@ -154,9 +156,11 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
         bytes memory constructorArgs = abi.encode(
             POOLMANAGER,
             rateProvider,
-            minFee,
-            maxFee,
-            ezETH
+            defaultFee,
+            minDynamicFee,
+            maxDynamicFee,
+            ezETH,
+            owner
         );
         (address hookAddress, bytes32 salt) = HookMiner.find(
             CREATE2_DEPLOYER,
@@ -173,9 +177,11 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
         RenzoStability renzoStability = new RenzoStability{salt: salt}(
             POOLMANAGER,
             rateProvider,
-            minFee,
-            maxFee,
-            ezETH
+            defaultFee,
+            minDynamicFee,
+            maxDynamicFee,
+            ezETH,
+            owner
         );
         vm.stopBroadcast();
         // check that the hook was deployed at the expected address

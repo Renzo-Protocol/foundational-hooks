@@ -23,9 +23,11 @@ contract RenzoStabilityScript is Script, Constants, Config {
     // sepolia configurations
     IRateProvider rateProvider =
         IRateProvider(0x44Ad1be5B5912a497dAa147B7A3c55DC6067BFcF);
-    uint24 minFee = 100;
-    uint24 maxFee = 10_000;
+    uint24 minDynamicFee = 2_500;
+    uint24 maxDynamicFee = 10_000;
+    uint24 defaultFee = 100;
     address ezETH = 0x8d7F20137041334FBd7c87796f03b1999770Cc5f;
+    address owner = 0xD1e6626310fD54Eceb5b9a51dA2eC329D6D4B68A; // Multisig on mainnet
 
     // Pool configs
     // TODO: configure 0 zero values
@@ -42,9 +44,11 @@ contract RenzoStabilityScript is Script, Constants, Config {
         bytes memory constructorArgs = abi.encode(
             POOLMANAGER,
             rateProvider,
-            minFee,
-            maxFee,
-            ezETH
+            defaultFee,
+            minDynamicFee,
+            maxDynamicFee,
+            ezETH,
+            owner
         );
         (address hookAddress, bytes32 salt) = HookMiner.find(
             CREATE2_FACTORY,
@@ -61,9 +65,11 @@ contract RenzoStabilityScript is Script, Constants, Config {
         RenzoStability renzoStability = new RenzoStability{salt: salt}(
             POOLMANAGER,
             rateProvider,
-            minFee,
-            maxFee,
-            ezETH
+            defaultFee,
+            minDynamicFee,
+            maxDynamicFee,
+            ezETH,
+            owner
         );
         require(
             address(renzoStability) == hookAddress,

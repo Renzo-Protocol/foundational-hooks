@@ -22,13 +22,17 @@ import {IRateProvider} from "../src/interfaces/IRateProvider.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {SwapFeeEventAsserter} from "./utils/SwapFeeEventAsserter.sol";
 import {SqrtPriceLibrary} from "../src/libraries/SqrtPriceLibrary.sol";
+import "openzeppelin-contracts/access/Ownable.sol";
 
 contract RenzoStabilityTest is Deployers {
     // Hook configs. TODO: configure
     IRateProvider rateProvider = IRateProvider(makeAddr("rateProvider"));
     uint256 exchangeRate = 1046726277868365115;
-    uint24 minFee = 100;
+    uint24 defaultFee = 100; // 0.01%
+    uint24 minFee = 2_500;
     uint24 maxFee = 10_000;
+    address owner = makeAddr("owner");
+    address ALICE = makeAddr("alice");
 
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
@@ -59,9 +63,11 @@ contract RenzoStabilityTest is Deployers {
         bytes memory constructorArgs = abi.encode(
             manager,
             rateProvider,
+            defaultFee,
             minFee,
             maxFee,
-            Currency.unwrap(currency1)
+            Currency.unwrap(currency1),
+            owner
         ); //Add all the necessary constructor arguments from the hook
         deployCodeTo(
             "RenzoStability.sol:RenzoStability",
@@ -110,6 +116,67 @@ contract RenzoStabilityTest is Deployers {
         );
     }
 
+    function test_configureFee() public {
+        uint24 _defaultFeeBps = 100;
+        uint24 _minFee = 2_600;
+        uint24 _maxFee = 9_000;
+
+        uint24 currentMinFee = hook.MIN_FEE_BPS();
+        vm.startPrank(ALICE);
+        // Verify revert if not owner
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Ownable.OwnableUnauthorizedAccount.selector,
+                ALICE
+            )
+        );
+        hook.configureFee(50, 100, 200);
+
+        vm.stopPrank();
+
+        vm.startPrank(owner);
+        // Verify revert if default fee is 0
+        vm.expectRevert(RenzoStability.InvalidZeroInput.selector);
+        hook.configureFee(0, _minFee, _maxFee);
+
+        // Verify revert if minFee is 0
+        vm.expectRevert(RenzoStability.InvalidZeroInput.selector);
+        hook.configureFee(_defaultFeeBps, 0, _maxFee);
+
+        // Verify revert if maxFee is 0
+        vm.expectRevert(RenzoStability.InvalidZeroInput.selector);
+        hook.configureFee(_defaultFeeBps, _minFee, 0);
+
+        // verify revert if default fee is less than MIN_FEE_BPS
+        vm.expectRevert(RenzoStability.InvalidDefaultFee.selector);
+        hook.configureFee(currentMinFee - 1, _minFee, _maxFee);
+
+        // verify revert if default fee is greater than minFee
+        vm.expectRevert(RenzoStability.InvalidDefaultFee.selector);
+        hook.configureFee(_minFee + 1, _minFee, _maxFee);
+
+        // Verify revert if maxFee is greater than MAX_FEE_BPS
+        vm.expectRevert(RenzoStability.InvalidMaxFee.selector);
+        hook.configureFee(_defaultFeeBps, _minFee, 100_001);
+
+        // Verify revert if minFee is greater than maxFee
+        vm.expectRevert(RenzoStability.InvalidMinFee.selector);
+        hook.configureFee(_defaultFeeBps, _maxFee, _minFee);
+
+        // Verify revert if minFee is less than MIN_FEE_BPS
+        vm.expectRevert(RenzoStability.InvalidDefaultFee.selector);
+        hook.configureFee(_defaultFeeBps, currentMinFee - 1, _maxFee);
+
+        // Configure the fee
+        hook.configureFee(_defaultFeeBps, _minFee, _maxFee);
+        vm.stopPrank();
+
+        // Verify the fee is configured correctly
+        assertEq(hook.defaultFeeBps(), _defaultFeeBps);
+        assertEq(hook.minDynamicFeeBps(), _minFee);
+        assertEq(hook.maxDynamicFeeBps(), _maxFee);
+    }
+
     function test_fuzz_swap(bool zeroForOne, bool exactIn) public {
         int256 amountSpecified = exactIn ? -int256(1e18) : int256(1e18);
         uint256 msgValue = zeroForOne ? 2e18 : 0;
@@ -142,7 +209,7 @@ contract RenzoStabilityTest is Deployers {
         vm.recordLogs();
         BalanceDelta ref = swap(key, zeroForOne, -int256(0.1e18), ZERO_BYTES);
         Vm.Log[] memory recordedLogs = vm.getRecordedLogs();
-        recordedLogs.assertSwapFee(minFee);
+        recordedLogs.assertSwapFee(defaultFee);
 
         // move the pool price to off peg
         swap(key, zeroForOne, -int256(1000e18), ZERO_BYTES);
@@ -156,7 +223,7 @@ contract RenzoStabilityTest is Deployers {
             ZERO_BYTES
         );
         recordedLogs = vm.getRecordedLogs();
-        recordedLogs.assertSwapFee(zeroForOne ? minFee : maxFee);
+        recordedLogs.assertSwapFee(zeroForOne ? defaultFee : maxFee);
 
         // output of the second swap is much less
         // highFeeSwap + offset < ref
@@ -193,10 +260,10 @@ contract RenzoStabilityTest is Deployers {
         uint24 lowerFee = recordedLogs.getSwapFeeFromEvent();
         if (zeroForOne) {
             assertGt(higherFee, lowerFee);
-            assertEq(lowerFee, minFee); // minFee
+            assertEq(lowerFee, defaultFee); // defaultFee
         } else {
-            assertEq(lowerFee, minFee); // minFee
-            assertEq(higherFee, minFee); // minFee
+            assertEq(lowerFee, defaultFee); // defaultFee
+            assertEq(higherFee, defaultFee); // defaultFee
         }
 
         // output of the second swap is much higher
@@ -217,10 +284,12 @@ contract RenzoStabilityTest is Deployers {
                 uint160(poolSqrtPriceX96),
                 SqrtPriceLibrary.exchangeRateToSqrtPriceX96(exchangeRate)
             );
-        uint24 expectedFee = uint24(absPercentageDiffWad / 1e12);
+        uint24 expectedFee = uint24(absPercentageDiffWad / 1e12) > minFee
+            ? uint24(absPercentageDiffWad / 1e12)
+            : defaultFee;
         // move the pool price away from peg
         vm.recordLogs();
-        swap(key, false, -int256(0.1e18), ZERO_BYTES);
+        swap(key, false, -int256(11e18), ZERO_BYTES);
         Vm.Log[] memory recordedLogs = vm.getRecordedLogs();
         uint24 swapFee = recordedLogs.getSwapFeeFromEvent();
         assertEq(swapFee, expectedFee);
