@@ -23,10 +23,10 @@ contract RenzoStability is PegStabilityHook, Ownable2Step {
 
     // Fee bps range where 1_000_000 = 100 %
     uint24 public constant MAX_FEE_BPS = 10_000; // 1% max fee allowed, 1% = 10_000
-    uint24 public constant MIN_FEE_BPS = 100; // 0.01% min fee allowed
-    uint24 public immutable defaultFeeBps; // default fee bps to charge if the pool price is off by less than minDynamicFeeBps
+    uint24 public constant MIN_FEE_BPS = 50; // 0.005% min fee allowed
 
     IRateProvider public rateProvider;
+    uint24 public defaultFeeBps; // default fee bps to charge if the pool price is off by less than minDynamicFeeBps
     uint24 public maxDynamicFeeBps;
     uint24 public minDynamicFeeBps;
 
@@ -35,8 +35,10 @@ contract RenzoStability is PegStabilityHook, Ownable2Step {
     // Events
     // @dev Event emitted when the fee configuration is updated
     event FeeConfigurationUpdated(
+        uint24 oldDefaultFeeBps,
         uint24 oldMinDynamicFeeBps,
         uint24 oldMaxDynamicFeeBps,
+        uint24 newDefaultFeeBps,
         uint24 newMinDynamicFeeBps,
         uint24 newMaxDynamicFeeBps
     );
@@ -100,30 +102,35 @@ contract RenzoStability is PegStabilityHook, Ownable2Step {
      * @param   _maxDynamicFee  new maximum dynamic fee bps
      */
     function configureFee(
+        uint24 _defaultFeeBps,
         uint24 _minDynamicFee,
         uint24 _maxDynamicFee
     ) external onlyOwner {
         // check for 0 value inputs
-        if (_minDynamicFee == 0 || _maxDynamicFee == 0)
+        if (_minDynamicFee == 0 || _maxDynamicFee == 0 || _defaultFeeBps == 0)
             revert InvalidZeroInput();
 
-        // check for maxFee
+        // check for default fee range, MIN_FEE_BPS <= defaultFeeBps <= maxFee
+        if (_defaultFeeBps < MIN_FEE_BPS || _defaultFeeBps > _minDynamicFee)
+            revert InvalidDefaultFee();
+
+        // check for maxFee, _maxDynamicFee <= MAX_FEE_BPS
         if (_maxDynamicFee > MAX_FEE_BPS) revert InvalidMaxFee();
 
-        // check for minFee range
-        if (
-            _minDynamicFee > _maxDynamicFee ||
-            _minDynamicFee < MIN_FEE_BPS ||
-            _minDynamicFee < defaultFeeBps
-        ) revert InvalidMinFee();
+        // check for minFee range, MIN_FEE_BPS <= _minDynamicFee <= _maxDynamicFee
+        if (_minDynamicFee > _maxDynamicFee || _minDynamicFee < MIN_FEE_BPS)
+            revert InvalidMinFee();
 
         emit FeeConfigurationUpdated(
+            defaultFeeBps,
             minDynamicFeeBps,
             maxDynamicFeeBps,
+            _defaultFeeBps,
             _minDynamicFee,
             _maxDynamicFee
         );
 
+        defaultFeeBps = _defaultFeeBps;
         minDynamicFeeBps = _minDynamicFee;
         maxDynamicFeeBps = _maxDynamicFee;
     }

@@ -36,7 +36,7 @@ contract CreatePoolAndAddLiquidityScript is Script, Constants, Config {
         IRateProvider(0xDb6df3559D2d96985062F0824442550CA7715960);
     uint24 minDynamicFee = 2_500;
     uint24 maxDynamicFee = 10_000;
-    uint24 defaultFee = 100;
+    uint24 defaultFee = 95;
     address ezETH = 0x8d7F20137041334FBd7c87796f03b1999770Cc5f;
     address owner = 0xD1e6626310fD54Eceb5b9a51dA2eC329D6D4B68A; // Multisig on mainnet
     address payable recipient =

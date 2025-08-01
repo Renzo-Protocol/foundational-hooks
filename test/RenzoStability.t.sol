@@ -117,9 +117,11 @@ contract RenzoStabilityTest is Deployers {
     }
 
     function test_configureFee() public {
+        uint24 _defaultFeeBps = 100;
         uint24 _minFee = 2_600;
         uint24 _maxFee = 9_000;
 
+        uint24 currentMinFee = hook.MIN_FEE_BPS();
         vm.startPrank(ALICE);
         // Verify revert if not owner
         vm.expectRevert(
@@ -128,40 +130,49 @@ contract RenzoStabilityTest is Deployers {
                 ALICE
             )
         );
-        hook.configureFee(100, 200);
+        hook.configureFee(50, 100, 200);
 
         vm.stopPrank();
 
         vm.startPrank(owner);
+        // Verify revert if default fee is 0
+        vm.expectRevert(RenzoStability.InvalidZeroInput.selector);
+        hook.configureFee(0, _minFee, _maxFee);
+
         // Verify revert if minFee is 0
         vm.expectRevert(RenzoStability.InvalidZeroInput.selector);
-        hook.configureFee(0, _maxFee);
+        hook.configureFee(_defaultFeeBps, 0, _maxFee);
 
         // Verify revert if maxFee is 0
         vm.expectRevert(RenzoStability.InvalidZeroInput.selector);
-        hook.configureFee(_minFee, 0);
+        hook.configureFee(_defaultFeeBps, _minFee, 0);
+
+        // verify revert if default fee is less than MIN_FEE_BPS
+        vm.expectRevert(RenzoStability.InvalidDefaultFee.selector);
+        hook.configureFee(currentMinFee - 1, _minFee, _maxFee);
+
+        // verify revert if default fee is greater than minFee
+        vm.expectRevert(RenzoStability.InvalidDefaultFee.selector);
+        hook.configureFee(_minFee + 1, _minFee, _maxFee);
 
         // Verify revert if maxFee is greater than MAX_FEE_BPS
         vm.expectRevert(RenzoStability.InvalidMaxFee.selector);
-        hook.configureFee(_minFee, 100_001);
+        hook.configureFee(_defaultFeeBps, _minFee, 100_001);
 
         // Verify revert if minFee is greater than maxFee
         vm.expectRevert(RenzoStability.InvalidMinFee.selector);
-        hook.configureFee(_maxFee, _minFee);
+        hook.configureFee(_defaultFeeBps, _maxFee, _minFee);
 
         // Verify revert if minFee is less than MIN_FEE_BPS
-        vm.expectRevert(RenzoStability.InvalidMinFee.selector);
-        hook.configureFee(50, _maxFee);
-
-        // Verify revert if min fee is less than default fee
-        vm.expectRevert(RenzoStability.InvalidMinFee.selector);
-        hook.configureFee(defaultFee - 1, _maxFee);
+        vm.expectRevert(RenzoStability.InvalidDefaultFee.selector);
+        hook.configureFee(_defaultFeeBps, currentMinFee - 1, _maxFee);
 
         // Configure the fee
-        hook.configureFee(_minFee, _maxFee);
+        hook.configureFee(_defaultFeeBps, _minFee, _maxFee);
         vm.stopPrank();
 
         // Verify the fee is configured correctly
+        assertEq(hook.defaultFeeBps(), _defaultFeeBps);
         assertEq(hook.minDynamicFeeBps(), _minFee);
         assertEq(hook.maxDynamicFeeBps(), _maxFee);
     }
