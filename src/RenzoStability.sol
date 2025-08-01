@@ -24,7 +24,7 @@ contract RenzoStability is PegStabilityHook, Ownable2Step {
     // Fee bps range where 1_000_000 = 100 %
     uint24 public constant MAX_FEE_BPS = 10_000; // 1% max fee allowed, 1% = 10_000
     uint24 public constant MIN_FEE_BPS = 100; // 0.01% min fee allowed
-    uint24 public immutable defaultFeeBps; // default fee bps to charge if the pool price is off by less than maxDynamicFeeBps
+    uint24 public immutable defaultFeeBps; // default fee bps to charge if the pool price is off by less than minDynamicFeeBps
 
     IRateProvider public rateProvider;
     uint24 public maxDynamicFeeBps;
